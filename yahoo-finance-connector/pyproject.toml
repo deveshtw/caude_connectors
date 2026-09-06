@@ -1,0 +1,13 @@
+[project]
+name = "yahoo-finance-connector"
+version = "0.1.0"
+description = "MCP connector that fetches current ticker prices from Yahoo Finance"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp[cli]>=1.2.0",
+    "yfinance>=0.2.40",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
