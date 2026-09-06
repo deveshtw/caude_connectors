@@ -49,3 +49,22 @@ Add to your `claude_desktop_config.json`:
 Restart Claude Desktop, then ask something like:
 
 > What's the current price of TSLA?
+
+## Verified example output
+
+```
+>>> get_ticker_price("AAPL")
+{
+  "symbol": "AAPL",
+  "price": 319.97,
+  "currency": "USD",
+  "previous_close": 327.6421,
+  "change": -7.67,
+  "change_percent": -2.34
+}
+```
+
+Note: `yfinance` defaults to a `curl_cffi` client that impersonates a
+browser's TLS fingerprint; some proxies/firewalls reset that connection.
+`server.py` automatically retries with a plain `requests.Session` in that
+case, which is what makes the tool work reliably across network setups.

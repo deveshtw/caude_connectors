@@ -1,5 +1,6 @@
 """MCP connector exposing Yahoo Finance ticker prices to Claude."""
 
+import requests
 import yfinance as yf
 
 try:
@@ -8,6 +9,19 @@ except ModuleNotFoundError:
     from mcp.server.mcpserver import MCPServer as FastMCP
 
 mcp = FastMCP("yahoo-finance")
+
+# yfinance defaults to a curl_cffi client that impersonates a browser's TLS
+# fingerprint. Some network setups (proxies, corporate firewalls) reset that
+# connection; a plain requests.Session with a normal User-Agent works there.
+_FALLBACK_SESSION = requests.Session()
+_FALLBACK_SESSION.headers.update({"User-Agent": "Mozilla/5.0"})
+
+
+def _fetch_price(symbol: str, session=None):
+    """Return (fast_info, price) for symbol, forcing the network fetch now."""
+    info = yf.Ticker(symbol, session=session).fast_info
+    price = info["last_price"]  # triggers the actual HTTP request
+    return info, price
 
 
 @mcp.tool()
@@ -18,38 +32,34 @@ def get_ticker_price(symbol: str) -> dict:
         symbol: Ticker symbol, e.g. "AAPL", "MSFT", "BTC-USD".
     """
     symbol = symbol.strip().upper()
-    ticker = yf.Ticker(symbol)
 
     try:
-        info = ticker.fast_info
-        price = info["last_price"]
+        info, price = _fetch_price(symbol)
     except Exception:
-        info = None
-        price = None
-
-    if price is None:
         try:
-            history = ticker.history(period="1d")
+            info, price = _fetch_price(symbol, session=_FALLBACK_SESSION)
         except Exception as exc:
             raise RuntimeError(
                 f"Could not fetch price for ticker '{symbol}' from Yahoo Finance: {exc}"
             ) from exc
-        if history.empty:
-            raise ValueError(f"No price data found for ticker '{symbol}'")
-        price = float(history["Close"].iloc[-1])
 
     result = {"symbol": symbol, "price": price}
 
-    if info is not None:
-        currency = info.get("currency")
-        previous_close = info.get("previous_close")
-        if currency:
-            result["currency"] = currency
-        if previous_close is not None:
-            result["previous_close"] = previous_close
-            result["change"] = price - previous_close
-            if previous_close:
-                result["change_percent"] = (price - previous_close) / previous_close * 100
+    try:
+        currency = info["currency"]
+    except Exception:
+        currency = None
+    try:
+        previous_close = info["previous_close"]
+    except Exception:
+        previous_close = None
+
+    if currency:
+        result["currency"] = currency
+    if previous_close:
+        result["previous_close"] = previous_close
+        result["change"] = price - previous_close
+        result["change_percent"] = (price - previous_close) / previous_close * 100
 
     return result
 
